@@ -3,67 +3,134 @@
 #include "LcdMenu.hpp"
 #include "inc/Config.hpp"
 
-#if DISPLAY_TYPE > 0
+// The right arrow bitmap
+byte LcdHD44780::RightArrowBitmap[8] = {
+    B00000,
+    B01000,
+    B01100,
+    B01110,
+    B01100,
+    B01000,
+    B00000,
+    B00000};
 
-// Class that drives the LCD screen with a menu
-// You add a string and an id item and this class handles the display and navigation
-// Create a new menu, using the given number of LCD display columns and rows
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
-LcdMenu::LcdMenu(byte cols, byte rows, int maxItems) : _lcd(LCD_PIN8, LCD_PIN9, LCD_PIN4, LCD_PIN5, LCD_PIN6, LCD_PIN7),
-  _cols(cols), _rows(rows), _maxItems(maxItems),
-  _charHeightRows(1)  // 1 character = 1 row
+// The left arrow bitmap
+byte LcdHD44780::LeftArrowBitmap[8] = {
+    B00000,
+    B00010,
+    B00110,
+    B01110,
+    B00110,
+    B00010,
+    B00000,
+    B00000};
+
+byte LcdHD44780::UpArrowBitmap[8] = {
+    B00100,
+    B01110,
+    B11111,
+    B00100,
+    B00100,
+    B00100,
+    B00100,
+    B00100};
+
+byte LcdHD44780::DownArrowBitmap[8] = {
+    B000100,
+    B000100,
+    B000100,
+    B000100,
+    B000100,
+    B011111,
+    B001110,
+    B000100};
+
+byte LcdHD44780::DegreesBitmap[8] = {
+    B01100,
+    B10010,
+    B10010,
+    B01100,
+    B00000,
+    B00000,
+    B00000,
+    B00000};
+
+byte LcdHD44780::MinutesBitmap[8] = {
+    B01000,
+    B01000,
+    B01000,
+    B00000,
+    B00000,
+    B00000,
+    B00000,
+    B00000};
+
+byte LcdHD44780::TrackingBitmap[8] = {
+    B10111,
+    B00010,
+    B10010,
+    B00010,
+    B10111,
+    B00101,
+    B10110,
+    B00101};
+
+byte LcdHD44780::NoTrackingBitmap[8] = {
+    B10000,
+    B00000,
+    B10000,
+    B00010,
+    B10000,
+    B00000,
+    B10000,
+    B00000};
+
+// Print the given character to the LCD, converting some special ones to our bitmaps
+byte LcdHD44780::translateChar(char ch) const
 {
+  if (ch == '>')
+  {
+    return _rightArrow;
+  }
+  else if (ch == '<')
+  {
+   return _leftArrow;
+  }
+  else if (ch == '^')
+  {
+    return _upArrow;
+  }
+  else if (ch == '~')
+  {
+    return _downArrow;
+  }
+  else if (ch == '@')
+  {
+    return _degrees;
+  }
+  else if (ch == '\'')
+  {
+   return _minutes;
+  }
+  else if (ch == '&')
+  {
+    return _tracking;
+  }
+  else if (ch == '`')
+  {
+    return _noTracking;
+  }
+  else
+  {
+    return ch;
+  }
 }
-#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-LcdMenu::LcdMenu(byte cols, byte rows, int maxItems) : _lcd(0x20),
-  _cols(cols), _rows(rows), _maxItems(maxItems),
-  _charHeightRows(1)  // 1 character = 1 row
+
+LcdKeypadShield::LcdKeypadShield(byte cols, byte rows)
+: _lcd(LCD_PIN8, LCD_PIN9, LCD_PIN4, LCD_PIN5, LCD_PIN6, LCD_PIN7)
 {
-  #if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-  _lcd.setMCPType(LTI_TYPE_MCP23017);
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008
-  _lcd.setMCPType(LTI_TYPE_MCP23008);
-  #endif
-}
-#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-LcdMenu::LcdMenu(byte cols, byte rows, int maxItems) :
-  _cols(cols), _rows(rows), _maxItems(maxItems),
-  _charHeightRows(2)  // For 7x14 font 1 character = 2 rows (2x8 pixels)
-{
-}
-#endif
+  _lcd.begin(cols, rows);
 
-void LcdMenu::startup()
-{
-  LOGV1(DEBUG_INFO, F("LcdMenu:: startup"));
-
-  #if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
-    _lcd.begin(_cols, _rows);
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-    _lcd.begin(_cols, _rows);
-    _lcd.setBacklight(RED);
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-    _lcd.begin();
-    _lcd.setPowerSave(0);
-    _lcd.clear();
-    _lcd.setFont(u8x8_font_7x14_1x2_f);   // Each 7x14 character takes up 2 8-pixel rows
-  #endif
-
-  _brightness = EEPROMStore::getBrightness();
-  LOGV2(DEBUG_INFO, F("LCD: Brightness from EEPROM is %d"), _brightness);
-  setBacklightBrightness(_brightness, false);
-
-  _numMenuItems = 0;
-  _activeMenuIndex = 0;
-  _longestDisplay = 0;
-  _columns = _cols;
-  _activeRow = -1;
-  _activeCol = -1;
-  _lastDisplay[0] = "";
-  _lastDisplay[1] = "";
-  _menuItems = new MenuItem *[_maxItems];
-
-#if DISPLAY_TYPE != DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
   // Create special characters for degrees and arrows
   _lcd.createChar(_degrees, DegreesBitmap);
   _lcd.createChar(_minutes, MinutesBitmap);
@@ -73,11 +140,128 @@ void LcdMenu::startup()
   _lcd.createChar(_downArrow, DownArrowBitmap);
   _lcd.createChar(_tracking, TrackingBitmap);
   _lcd.createChar(_noTracking, NoTrackingBitmap);
-#endif
+}
+
+void LcdKeypadShield::setContrast(byte contrast)
+{
+  // If optional LCD_BRIGHTNESS_PIN has not been defined then do nothing
+  #if defined(LCD_BRIGHTNESS_PIN)
+    // Not supported on ESP32 due to lack of built-in analogWrite()
+    // TODO: Verify that this works correctly on ATmega (reports of crashes)
+    // analogWrite(LCD_BRIGHTNESS_PIN, contrast);
+  #endif
+}
+
+LcdMCP23008_MCP23017::LcdMCP23008_MCP23017(byte cols, byte rows, int mcp)
+: _lcd(0x20)
+{
+  _lcd.begin(cols, rows);
+  _lcd.setBacklight(RED);
+  _lcd.setMCPType(mcp);
+
+  // Create special characters for degrees and arrows
+  _lcd.createChar(_degrees, DegreesBitmap);
+  _lcd.createChar(_minutes, MinutesBitmap);
+  _lcd.createChar(_leftArrow, LeftArrowBitmap);
+  _lcd.createChar(_rightArrow, RightArrowBitmap);
+  _lcd.createChar(_upArrow, UpArrowBitmap);
+  _lcd.createChar(_downArrow, DownArrowBitmap);
+  _lcd.createChar(_tracking, TrackingBitmap);
+  _lcd.createChar(_noTracking, NoTrackingBitmap);
+}
+
+void LcdMCP23008_MCP23017::setContrast(byte /* unused */)
+{
+  // Nothing to do?
+}
+
+LcdSSD1306::LcdSSD1306(byte /* unused */, byte /* unused */)
+{
+  _lcd.begin();
+  _lcd.setPowerSave(0);
+  _lcd.clear();
+  _lcd.setFont(u8x8_font_7x14_1x2_f);   // Each 7x14 character takes up 2 8-pixel rows
+}
+
+void LcdSSD1306::setContrast(byte contrast)
+{
+  _lcd.setContrast(contrast);
+}
+
+// Print a single character at the current cursor location and advance cursor by one. Substitutes special chars.
+void LcdSSD1306::printChar(char ch)
+{
+  if (ch == '>')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+14);  // Right arrow
+  }
+  else if (ch == '<')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+13);  // Left arrow
+  }
+  else if (ch == '^')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+15);  // Up arrow  
+  }
+  else if (ch == '~')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+12);  // Down arrow
+  }
+  else if (ch == '@')
+  {
+    _lcd.setFont(u8x8_font_7x14_1x2_f); 
+    _lcd.drawGlyph(_lcd.tx++,_lcd.ty,176);    // Degrees
+  }
+  else if (ch == '&')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_thing_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+15);  // Tracking
+  }
+  else if (ch == '`')
+  {
+    _lcd.setFont(u8x8_font_open_iconic_thing_1x1);
+    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+4);  // Not tracking
+  }
+  else
+  {
+    _lcd.setFont(u8x8_font_7x14_1x2_f);  
+    _lcd.drawGlyph(_lcd.tx++,_lcd.ty,ch);
+  }
+}
+
+// Class that drives the LCD screen with a menu
+// You add a string and an id item and this class handles the display and navigation
+// Create a new menu, using the given number of LCD display columns and rows
+
+template <class T> LcdMenuBase<T>::LcdMenuBase(byte cols, byte rows, int maxItems)
+: _columns(cols), _maxItems(maxItems), _lcd(cols, rows) 
+{
+}
+
+template <class T> void LcdMenuBase<T>::startup()
+{
+  LOGV1(DEBUG_INFO, F("LcdMenu:: startup"));
+
+  _brightness = EEPROMStore::getBrightness();
+  LOGV2(DEBUG_INFO, F("LCD: Brightness from EEPROM is %d"), _brightness);
+  setBacklightBrightness(_brightness, false);
+
+  _numMenuItems = 0;
+  _activeMenuIndex = 0;
+  _longestDisplay = 0;
+  _activeRow = -1;
+  _activeCol = -1;
+  _lastDisplay[0] = "";
+  _lastDisplay[1] = "";
+  _menuItems = new MenuItem *[_maxItems];
 }
 
 // Find a menu item by its ID
-MenuItem *LcdMenu::findById(byte id)
+template <class T> MenuItem *LcdMenuBase<T>::findById(byte id)
 {
   for (byte i = 0; i < _numMenuItems; i++)
   {
@@ -90,20 +274,20 @@ MenuItem *LcdMenu::findById(byte id)
 }
 
 // Add a new menu item to the list (order matters)
-void LcdMenu::addItem(const char *disp, byte id)
+template <class T> void LcdMenuBase<T>::addItem(const char *disp, byte id)
 {
   _menuItems[_numMenuItems++] = new MenuItem(disp, id);
   _longestDisplay = max((size_t)_longestDisplay, strlen(disp));
 }
 
 // Get the currently active item ID
-byte LcdMenu::getActive()
+template <class T> byte LcdMenuBase<T>::getActive()
 {
   return _menuItems[_activeMenuIndex]->id();
 }
 
 // Set the active menu item
-void LcdMenu::setActive(byte id)
+template <class T> void LcdMenuBase<T>::setActive(byte id)
 {
   for (byte i = 0; i < _numMenuItems; i++)
   {
@@ -116,33 +300,23 @@ void LcdMenu::setActive(byte id)
 }
 
 // Pass thru utility function
-void LcdMenu::setCursor(byte col, byte row)
+template <class T> void LcdMenuBase<T>::setCursor(byte col, byte row)
 {
   _activeRow = row;
   _activeCol = col;
 }
 
 // Pass thru utility function
-void LcdMenu::clear()
+template <class T> void LcdMenuBase<T>::clear()
 {
   _lcd.clear();
 }
 
 // Set the brightness of the backlight
-void LcdMenu::setBacklightBrightness(int level, bool persist)
+template <class T> void LcdMenuBase<T>::setBacklightBrightness(int level, bool persist)
 {
   _brightness = level;
-
-  #if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD && defined(LCD_BRIGHTNESS_PIN)
-    // Not supported on ESP32 due to lack of built-in analogWrite()
-    // TODO: Verify that this works correctly on ATmega (reports of crashes)
-    // analogWrite(LCD_BRIGHTNESS_PIN, _brightness);
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-    // Nothing to do?
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-    _lcd.setContrast(_brightness);
-  #endif
-
+  _lcd.setContrast(_brightness);
   if (persist)
   {
     LOGV2(DEBUG_INFO, F("LCD: Saving %d as brightness"), _brightness);
@@ -151,13 +325,13 @@ void LcdMenu::setBacklightBrightness(int level, bool persist)
 }
 
 // Get the current brightness
-int LcdMenu::getBacklightBrightness()
+template <class T> int LcdMenuBase<T>::getBacklightBrightness()
 {
   return _brightness;
 }
 
 // Go to the next menu item from currently active one
-void LcdMenu::setNextActive()
+template <class T> void LcdMenuBase<T>::setNextActive()
 {
 
   _activeMenuIndex = adjustWrap(_activeMenuIndex, 1, 0, _numMenuItems - 1);
@@ -166,7 +340,7 @@ void LcdMenu::setNextActive()
   updateDisplay();
 
   // Clear submenu line, in case new menu doesn't print anything.
-  _lcd.setCursor(0, 1*_charHeightRows);
+  _lcd.setCursor(0, 1);
   for (byte i = 0; i < _columns; i++)
   {
     _lcd.print(" ");
@@ -177,7 +351,7 @@ void LcdMenu::setNextActive()
 // This iterates over the menu items, building a menu string by concatenating their display string.
 // It also places the selector arrows around the active one.
 // It then sends the string to the LCD, keeping the selector arrows centered in the same place.
-void LcdMenu::updateDisplay()
+template <class T> void LcdMenuBase<T>::updateDisplay()
 {
 
   char bufMenu[17];
@@ -234,117 +408,32 @@ void LcdMenu::updateDisplay()
   setCursor(0, 1);
 }
 
-// Print the given character to the LCD, converting some special ones to our bitmaps
-void LcdMenu::printChar(char ch)
-{
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-  if (ch == '>')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+14);  // Right arrow
-  }
-  else if (ch == '<')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+13);  // Left arrow
-  }
-  else if (ch == '^')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+15);  // Up arrow  
-  }
-  else if (ch == '~')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_arrow_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+12);  // Down arrow
-  }
-  else if (ch == '@')
-  {
-    _lcd.setFont(u8x8_font_7x14_1x2_f); 
-    _lcd.drawGlyph(_lcd.tx++,_lcd.ty,176);    // Degrees
-  }
-  else if (ch == '&')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_thing_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+15);  // Tracking
-  }
-  else if (ch == '`')
-  {
-    _lcd.setFont(u8x8_font_open_iconic_thing_1x1);
-    _lcd.draw1x2Glyph(_lcd.tx++,_lcd.ty,64+4);  // Not tracking
-  }
-  else
-  {
-    _lcd.setFont(u8x8_font_7x14_1x2_f);  
-    _lcd.drawGlyph(_lcd.tx++,_lcd.ty,ch);
-  }
-#else
-  if (ch == '>')
-  {
-    _lcd.write(_rightArrow);
-  }
-  else if (ch == '<')
-  {
-    _lcd.write(_leftArrow);
-  }
-  else if (ch == '^')
-  {
-    _lcd.write(_upArrow);
-  }
-  else if (ch == '~')
-  {
-    _lcd.write(_downArrow);
-  }
-  else if (ch == '@')
-  {
-    _lcd.write(_degrees);
-  }
-  else if (ch == '\'')
-  {
-    _lcd.write(_minutes);
-  }
-  else if (ch == '&')
-  {
-    _lcd.write(_tracking);
-  }
-  else if (ch == '`')
-  {
-    _lcd.write(_noTracking);
-  }
-  else
-  {
-    _lcd.print(ch);
-  }
-#endif
-}
-
 // Print a character at a specific position
-void LcdMenu::printAt(int col, int row, char ch)
+template <class T> void LcdMenuBase<T>::printAt(int col, int row, char ch)
 {
-  _lcd.setCursor(col, _charHeightRows*row);
-  printChar(ch);
+  _lcd.setCursor(col, row);
+  _lcd.printChar(ch);
 }
 
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-uint8_t LcdMenu::readButtons()
+template <class T> uint8_t LcdMenuBase<T>::readButtons()
 {
-  return _lcd.readButtons();
+  // return _lcd.readButtons();    // TODO: fix this
+  return 0;
 }
-#endif
 
 // Print a string to the LCD at the current cursor position, substituting the special arrows and padding with spaces to the end
-void LcdMenu::printMenu(String line)
+template <class T> void LcdMenuBase<T>::printMenu(String line)
 {
   if ((_lastDisplay[_activeRow] != line) || (_activeCol != 0))
   {
 
     _lastDisplay[_activeRow] = line;
 
-    _lcd.setCursor(_activeCol, _charHeightRows*_activeRow);
+    _lcd.setCursor(_activeCol, _activeRow);
     int spaces = _columns - line.length();
     for (unsigned int i = 0; i < line.length(); i++)
     {
-      printChar(line[i]);
+      _lcd.printChar(line[i]);
     }
 
     // Clear the rest of the display
@@ -356,124 +445,4 @@ void LcdMenu::printMenu(String line)
   }
 }
 
-#if DISPLAY_TYPE != DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
 
-// The right arrow bitmap
-byte LcdMenu::RightArrowBitmap[8] = {
-    B00000,
-    B01000,
-    B01100,
-    B01110,
-    B01100,
-    B01000,
-    B00000,
-    B00000};
-
-// The left arrow bitmap
-byte LcdMenu::LeftArrowBitmap[8] = {
-    B00000,
-    B00010,
-    B00110,
-    B01110,
-    B00110,
-    B00010,
-    B00000,
-    B00000};
-
-byte LcdMenu::UpArrowBitmap[8] = {
-    B00100,
-    B01110,
-    B11111,
-    B00100,
-    B00100,
-    B00100,
-    B00100,
-    B00100};
-
-byte LcdMenu::DownArrowBitmap[8] = {
-    B000100,
-    B000100,
-    B000100,
-    B000100,
-    B000100,
-    B011111,
-    B001110,
-    B000100};
-
-byte LcdMenu::DegreesBitmap[8] = {
-    B01100,
-    B10010,
-    B10010,
-    B01100,
-    B00000,
-    B00000,
-    B00000,
-    B00000};
-
-byte LcdMenu::MinutesBitmap[8] = {
-    B01000,
-    B01000,
-    B01000,
-    B00000,
-    B00000,
-    B00000,
-    B00000,
-    B00000};
-
-byte LcdMenu::TrackingBitmap[8] = {
-    B10111,
-    B00010,
-    B10010,
-    B00010,
-    B10111,
-    B00101,
-    B10110,
-    B00101};
-
-byte LcdMenu::NoTrackingBitmap[8] = {
-    B10000,
-    B00000,
-    B10000,
-    B00010,
-    B10000,
-    B00000,
-    B10000,
-    B00000};
-
-#endif
-
-#else   // Headless (i.e. DISPLAY_TYPE == 0)
-
-LcdMenu::LcdMenu(byte cols, byte rows, int maxItems)
-{
-}
-
-MenuItem *LcdMenu::findById(byte id)
-{
-  return NULL;
-}
-
-void LcdMenu::addItem(const char *disp, byte id) {}
-
-byte LcdMenu::getActive()
-{
-  return 0;
-}
-
-void LcdMenu::setActive(byte id) {}
-
-void LcdMenu::setCursor(byte col, byte row) {}
-
-void LcdMenu::clear() {}
-
-void LcdMenu::setNextActive() {}
-
-void LcdMenu::updateDisplay() {}
-
-void LcdMenu::printMenu(String line) {}
-
-void LcdMenu::printChar(char ch) {}
-
-void LcdMenu::printAt(int col, int row, char ch) {}
-
-#endif

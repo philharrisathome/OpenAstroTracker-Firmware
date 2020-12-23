@@ -3,13 +3,9 @@
 #include <Arduino.h>
 #include "../Configuration_adv.hpp"
 
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
 #include <LiquidCrystal.h>
-#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
 #include <LiquidTWI2.h>
-#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
 #include <U8x8lib.h>        // https://github.com/olikraus/u8g2
-#endif
 
 // A single menu item (like RA, HEAT, POL, etc.)
 // The ID is just a number, it has no relevance for the order of the items
@@ -32,12 +28,117 @@ public:
   }
 };
 
-// Class that drives the LCD screen with a menu
-// You add a string and an id item and this class handles the display and navigation
-class LcdMenu {
+
+
+
+class LcdInterface
+{
+};
+
+class LcdNull : public LcdInterface
+{
+public:
+  LcdNull();
+
+  void setContrast(byte contrast) {};
+  void clear()  {};
+  void setCursor(byte col, byte row)  {};
+  void printChar(char ch) {};
+  void print(char const * str) {};
+};
+
+class LcdHD44780 : public LcdInterface
+{
+protected:
+  LcdHD44780() {};
+  byte translateChar(char ch) const;
+
+protected:
+
+  byte _degrees = 1;
+  byte _minutes = 2;
+  byte _leftArrow = 3;
+  byte _rightArrow = 4;
+  byte _upArrow = 5;
+  byte _downArrow = 6;
+  byte _tracking = 7;
+  byte _noTracking = 0;
+
+  // The special character bitmaps
+  static byte RightArrowBitmap[8];
+  static byte LeftArrowBitmap[8];
+  static byte UpArrowBitmap[8];
+  static byte DownArrowBitmap[8];
+  static byte DegreesBitmap[8];
+  static byte MinutesBitmap[8];
+  static byte TrackingBitmap[8];
+  static byte NoTrackingBitmap[8];
+};
+
+class LcdKeypadShield : public LcdHD44780
+{
+public:
+  LcdKeypadShield(byte cols, byte rows);
+  void setContrast(byte contrast);
+  void clear()  { _lcd.clear(); };
+  void setCursor(byte col, byte row)  { _lcd.setCursor(col, row); };
+  void printChar(char ch) { _lcd.write(translateChar(ch)); };
+  void print(char const * str) { _lcd.print(str); }
+
+public:
+  LiquidCrystal _lcd;   // The LCD screen that we'll display the menu on
+};
+
+class LcdMCP23008_MCP23017 : public LcdHD44780
+{
+protected:
+  LcdMCP23008_MCP23017(byte cols, byte rows, int mcp);
+public:
+  void setContrast(byte contrast);
+  void clear()  { _lcd.clear(); };
+  void setCursor(byte col, byte row)  { _lcd.setCursor(col, row); };
+  void printChar(char ch) { _lcd.write(translateChar(ch)); };
+  void print(char const * str) { _lcd.print(str); }
+
+public:
+  LiquidTWI2 _lcd;   // The LCD screen that we'll display the menu on
+};
+
+class LcdMCP23008 : public LcdMCP23008_MCP23017
+{
+public:
+  LcdMCP23008(byte cols, byte rows) : LcdMCP23008_MCP23017(cols, rows, LTI_TYPE_MCP23008) {}
+};
+
+class LcdMCP23017 : public LcdMCP23008_MCP23017
+{
+public:
+  LcdMCP23017(byte cols, byte rows) : LcdMCP23008_MCP23017(cols, rows, LTI_TYPE_MCP23017) {}
+};
+
+class LcdSSD1306 : public LcdInterface
+{
+public:
+  LcdSSD1306(byte cols, byte rows);
+  void setContrast(byte contrast);
+  void clear()  { _lcd.clear(); };
+  void setCursor(byte col, byte row)  { _lcd.setCursor(col, 2*row); };
+  void printChar(char ch);
+  void print(char const * str) { _lcd.print(str); }
+
+private:
+  U8X8_SSD1306_128X32_UNIVISION_HW_I2C _lcd;  
+};
+
+
+
+
+
+template <class T> class LcdMenuBase
+{
 public:
   // Create a new menu, using the given number of LCD display columns and rows
-  LcdMenu(byte cols, byte rows, int maxItems);
+  LcdMenuBase(byte cols, byte rows, int maxItems);
 
   void startup();
 
@@ -83,57 +184,63 @@ public:
   #endif
 
 private:
-  // Print a single character at the current cursor location and advance cursor by one. Substitutes special chars.
-  void printChar(char ch);
-
-private:
-#if DISPLAY_TYPE > 0
-
-  #if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
-    LiquidCrystal _lcd;   // The LCD screen that we'll display the menu on
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
-    LiquidTWI2 _lcd;   // The LCD screen that we'll display the menu on
-  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-    U8X8_SSD1306_128X32_UNIVISION_HW_I2C _lcd;  
-  #endif
-  
-  byte const _cols;
-  byte const _rows;
+  byte const _columns;    // The number of columns in the LCD display
   byte const _maxItems;
-  byte const _charHeightRows;   // Height of character in display native rows
 
-  MenuItem** _menuItems;  // The first menu item (linked list)
+  MenuItem** _menuItems;  // The first menu item (array of _maxItems)
+
   byte _numMenuItems;
   byte _activeMenuIndex;
   byte _longestDisplay;   // The number of characters in the longest menu item
-  byte _columns;          // The number of columns in the LCD display
   byte _activeRow;        // The row that the LCD cursor is on
   byte _activeCol;        // The column that the LCD cursor is on
   String _lastDisplay[2]; // The last string that was displayed on each row
   byte _brightness;
 
-#if DISPLAY_TYPE != DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-  byte _degrees = 1;
-  byte _minutes = 2;
-  byte _leftArrow = 3;
-  byte _rightArrow = 4;
-  byte _upArrow = 5;
-  byte _downArrow = 6;
-  byte _tracking = 7;
-  byte _noTracking = 0;
-
-  // The special character bitmaps
-  static byte RightArrowBitmap[8];
-  static byte LeftArrowBitmap[8];
-  static byte UpArrowBitmap[8];
-  static byte DownArrowBitmap[8];
-  static byte DegreesBitmap[8];
-  static byte MinutesBitmap[8];
-  static byte TrackingBitmap[8];
-  static byte NoTrackingBitmap[8];
-#endif
-
-#endif
+  T _lcd;
 };
+
+/**
+ * @brief Specialised empty implementation for headless operation to minimise memory usage.
+ * 
+ */
+template <> class LcdMenuBase<LcdNull>
+{
+public:
+  LcdMenuBase(byte cols, byte rows, int maxItems) {};
+  MenuItem *findById(byte id) { return 0; };
+  void addItem(const char *disp, byte id) {};
+  byte getActive() { return 0; };
+  void setActive(byte id) {};
+  void setCursor(byte col, byte row) {};
+  void clear() {};
+  void setNextActive() {};
+  void updateDisplay() {};
+  void printMenu(String line) {};
+  void printChar(char ch) {};
+  void printAt(int col, int row, char ch) {};
+};
+
+// Explicitly instantiate to allow definition in cpp file
+template class LcdMenuBase<LcdKeypadShield>;
+template class LcdMenuBase<LcdMCP23008>;
+template class LcdMenuBase<LcdMCP23017>;
+template class LcdMenuBase<LcdSSD1306>;
+
+/**
+ * @brief Use DISPLAY_TYPE to map a concrete implementation of the LcdMenuInterface to the public LcdMenu type
+ * 
+ */
+#if DISPLAY_TYPE == DISPLAY_TYPE_NONE
+  typedef LcdMenuBase<LcdNull> LcdMenu;
+#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
+  typedef LcdMenuBase<LcdKeypadShield> LcdMenu;
+#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008
+  typedef LcdMenuBase<LcdMCP23008> LcdMenu;
+#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
+  typedef LcdMenuBase<LcdMCP23017> LcdMenu;
+#elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
+  typedef LcdMenuBase<LcdSSD1306> LcdMenu;
+#endif
 
 #endif
