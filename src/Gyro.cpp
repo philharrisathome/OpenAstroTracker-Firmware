@@ -1,26 +1,18 @@
 #include "../Configuration_adv.hpp"
-
-#if USE_GYRO_LEVEL == 1
-#include <Wire.h> // I2C communication library
-
 #include "Utility.hpp"
 #include "Gyro.hpp"
 
+#include <Wire.h> // I2C communication library
+
 /**
- * Tilt, roll, and temperature measurementusing the MPU-6050 MEMS gyro.
- * See: https://invensense.tdk.com/products/motion-tracking/6-axis/mpu-6050/
- * Datasheet: https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
- * Register descriptions: https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Register-Map1.pdf
- * */
-
-bool Gyro::isPresent(false);
-
-void Gyro::startup()
-/* Starts up the MPU-6050 device.
-   Reads the WHO_AM_I register to verify if the device is present.
-   Wakes device from power-down.
-   Sets accelerometers to minimum bandwidth to reduce measurement noise.
-*/
+ * @brief Start the gyro device.
+ * 
+ * Starts up the MPU-6050 device.
+ * Reads the WHO_AM_I register to verify if the device is present.
+ * Wakes device from power-down.
+ * Sets accelerometers to minimum bandwidth to reduce measurement noise.
+ */
+void GyroMPU6050::startup()
 {
     // Initialize interface to the MPU6050
     LOGV1(DEBUG_INFO, F("GYRO:: Starting"));
@@ -33,8 +25,8 @@ void Gyro::startup()
     Wire.endTransmission(true);
     Wire.requestFrom(MPU6050_I2C_ADDR, 1, 1);
     byte id = (Wire.read() >> 1) & 0x3F;    
-    isPresent = (id == 0x34);
-    if (!isPresent) {
+    _isPresent = (id == 0x34);
+    if (!_isPresent) {
         LOGV1(DEBUG_INFO, F("GYRO:: Not found!"));
         return;
     }
@@ -54,26 +46,35 @@ void Gyro::startup()
     LOGV1(DEBUG_INFO, F("GYRO:: Started"));
 }
 
-void Gyro::shutdown()
-/* Shuts down the MPU-6050 device.
-   Currently does nothing.
-*/
+/**
+ * @brief Shuts down the MPU-6050 device.
+ * 
+ * Currently does nothing.
+ */
+void GyroMPU6050::shutdown()
 {
     LOGV1(DEBUG_INFO, F("GYRO: Shutdown"));
     // Nothing to do
 }
 
-angle_t Gyro::getCurrentAngles()
-/* Returns roll & tilt angles from MPU-6050 device in angle_t object in degrees.
-   If MPU-6050 is not found then returns {0,0}.
-*/
+/**
+ * @brief Returns roll & tilt angles from MPU-6050 device in angle_t object in degrees.
+ * 
+ * If MPU-6050 is not found then returns {0,0}.
+ * 
+ * @return GyroMPU6050::angle_t 
+ * 
+ * @retval {pitch,roll} The current pitch & roll tilt values in degrees.
+ * @retval {0,0}  If the gyro is unavailable.
+ */
+GyroMPU6050::angle_t GyroMPU6050::getCurrentAngles()
 {
     const int windowSize = 16;
     // Read the accelerometer data
     struct angle_t result;
     result.pitchAngle = 0;
     result.rollAngle = 0;
-    if (!isPresent)
+    if (!_isPresent)
         return result;     // Gyro is not available
 
     for (int i = 0; i < windowSize; i++)
@@ -105,13 +106,20 @@ angle_t Gyro::getCurrentAngles()
     return result;
 }
 
-float Gyro::getCurrentTemperature()
-/* Returns MPU-6050 device temperature in degree C.
-   If MPU-6050 is not found then returns 99 (C).
-*/
+/**
+ * @brief Returns MPU-6050 device temperature in degree C.
+ * 
+ * If MPU-6050 is not found then returns 0 (C).
+ * 
+ * @return float 
+ * 
+ * @retval temperature The current temperature in degrees C.
+ * @retval 0.0 If the gyro is unavailable.
+ */
+float GyroMPU6050::getCurrentTemperature()
 {
-    if (!isPresent)
-        return 99;     // Gyro is not available
+    if (!_isPresent)
+        return 0;     // Gyro is not available
 
     // Execute 2 byte read from MPU6050_REG_TEMP_OUT_H
     Wire.beginTransmission(MPU6050_I2C_ADDR);
@@ -124,4 +132,18 @@ float Gyro::getCurrentTemperature()
     float result = float(tempValue) / 340 + 36.53;
     return result;
 }
-#endif
+
+/**
+ * @brief Returns whether the gyro device is present or not. Often the gyro is externally mounted,
+ * and therefore can become disconnected or unplugged.
+ * 
+ * @return bool
+ * 
+ * @retval true The gyro is present (and working correctly)
+ * @retval false The gyro is not present (or could not be detected)
+ */
+bool GyroMPU6050::isPresent()
+{
+    return _isPresent;
+}
+
