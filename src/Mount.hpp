@@ -101,7 +101,6 @@ public:
   // Set the current RA tracking speed factor
   void setSpeedCalibration(float val, bool saveToStorage);
 
-#if USE_GYRO_LEVEL == 1
   // Get the current pitch angle calibraton
   float getPitchCalibrationAngle();
 
@@ -113,7 +112,6 @@ public:
 
   // Set the current pitch angle calibration
   void setRollCalibrationAngle(float angle);
-#endif
 
   // Returns the number of slew microsteps the given motor turns to move one degree
   float getStepsPerDegree(int which);
@@ -326,10 +324,8 @@ private:
   long _decLowerLimit;    // Movement limit in slewing steps
   long _decUpperLimit;    // Movement limit in slewing steps
 
-#if USE_GYRO_LEVEL == 1
   float _pitchCalibrationAngle;
   float _rollCalibrationAngle;
-#endif
 
   long _lastHASet;
   DayTime _LST;

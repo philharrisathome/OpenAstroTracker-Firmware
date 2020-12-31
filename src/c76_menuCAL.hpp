@@ -6,9 +6,8 @@
 
 #if SUPPORT_CALIBRATION == 1
 
-#if USE_GYRO_LEVEL == 1
 #include "Gyro.hpp"
-#endif
+Gyro _gyro;
 
 // HIGHLIGHT states allow you to pick one of the three sub functions.
 enum {
@@ -25,10 +24,8 @@ enum {
   HIGHLIGHT_AZIMUTH_ADJUSTMENT,
   HIGHLIGHT_ALTITUDE_ADJUSTMENT,
 #endif
-#if USE_GYRO_LEVEL == 1
   HIGHLIGHT_ROLL_LEVEL,
   HIGHLIGHT_PITCH_LEVEL,
-#endif
   HIGHLIGHT_BACKLIGHT,
 
   HIGHLIGHT_FIRST = HIGHLIGHT_POLAR,
@@ -116,11 +113,9 @@ int AzimuthMinutes = 0;
 int AltitudeMinutes = 0;
 
 // Pitch and roll offset
-#if USE_GYRO_LEVEL == 1
 int setRollZeroPoint = false;
 int setPitchZeroPoint = false;
 bool gyroStarted = false;
-#endif
 
 // The brightness of the backlight of the LCD shield.
 int Brightness = 255;
@@ -129,10 +124,8 @@ void gotoNextMenu()
 {
   lcdMenu.setNextActive();
 
-#if USE_GYRO_LEVEL == 1
-  Gyro::shutdown();
+  _gyro.shutdown();
   gyroStarted = false;
-#endif
 }
 
 bool checkProgressiveUpDown(int *val, int minDelay = 25)
@@ -196,14 +189,14 @@ bool processCalibrationKeys()
   bool waitForRelease = false;
   bool checkForKeyChange = true;
 
-#if USE_GYRO_LEVEL == 1
   if (!gyroStarted)
   {
     LOGV1(DEBUG_INFO, F("CAL: Starting Gyro!"));
-    Gyro::startup();
+    _gyro.startup();
     gyroStarted = true;
   }
-  
+
+#if USE_GYRO_LEVEL == 1  
   if ((startupState == StartupWaitForRollCompletion) && (calState != ROLL_OFFSET_CALIBRATION)) {
     LOGV1(DEBUG_INFO, F("CAL: In Startup, so going to Roll confirm!"));
     calState = ROLL_OFFSET_CALIBRATION;
@@ -478,7 +471,6 @@ bool processCalibrationKeys()
     break;
 #endif
 
-#if USE_GYRO_LEVEL == 1
     case ROLL_OFFSET_CALIBRATION:
     {
       if (key == btnSELECT)
@@ -519,7 +511,7 @@ bool processCalibrationKeys()
     {
       if (key == btnSELECT)
       {
-        auto angles = Gyro::getCurrentAngles();
+        auto angles = _gyro.getCurrentAngles();
         if (setRollZeroPoint)
         {
           LOGV2(DEBUG_GYRO, "CAL: Confirmed Roll offset is %f", angles.rollAngle);
@@ -565,7 +557,7 @@ bool processCalibrationKeys()
     {
       if (key == btnSELECT)
       {
-        auto angles = Gyro::getCurrentAngles();
+        auto angles = _gyro.getCurrentAngles();
         if (setPitchZeroPoint)
         {
           LOGV2(DEBUG_GYRO, "CAL: Confirmed Pitch offset is %f", angles.pitchAngle);
@@ -584,8 +576,6 @@ bool processCalibrationKeys()
       }
     }
     break;
-
-#endif
 
     case BACKLIGHT_CALIBRATION:
     {
@@ -902,7 +892,6 @@ bool processCalibrationKeys()
     break;
 #endif
 
-#if USE_GYRO_LEVEL == 1
     case HIGHLIGHT_ROLL_LEVEL:
     {
       if (key == btnDOWN)
@@ -934,7 +923,6 @@ bool processCalibrationKeys()
       }
     }
     break;
-#endif
 
     case HIGHLIGHT_BACKLIGHT : 
     {
@@ -1024,7 +1012,6 @@ void printCalibrationSubmenu()
   }
 #endif
 
-#if USE_GYRO_LEVEL == 1
   else if (calState == HIGHLIGHT_ROLL_LEVEL)
   {
     lcdMenu.printMenu(">Roll Offset");
@@ -1033,7 +1020,6 @@ void printCalibrationSubmenu()
   {
     lcdMenu.printMenu(">Pitch Offset");
   }
-#endif
   else if (calState == HIGHLIGHT_BACKLIGHT) {
      lcdMenu.printMenu(">LCD Brightness");
   }
@@ -1111,10 +1097,9 @@ void printCalibrationSubmenu()
     lcdMenu.printMenu(scratchBuffer);
   }
 #endif
-#if USE_GYRO_LEVEL == 1
   else if (calState == ROLL_OFFSET_CALIBRATION)
   {
-    auto angles = Gyro::getCurrentAngles();
+    auto angles = _gyro.getCurrentAngles();
     sprintf(scratchBuffer, "R: -------------");
     makeIndicator(scratchBuffer, angles.rollAngle - mount.getRollCalibrationAngle());
     lcdMenu.printMenu(scratchBuffer);
@@ -1128,7 +1113,7 @@ void printCalibrationSubmenu()
   }
   else if (calState == PITCH_OFFSET_CALIBRATION)
   {
-    auto angles = Gyro::getCurrentAngles();
+    auto angles = _gyro.getCurrentAngles();
     sprintf(scratchBuffer, "P: -------------");
     makeIndicator(scratchBuffer, angles.pitchAngle - mount.getPitchCalibrationAngle());
     lcdMenu.printMenu(scratchBuffer);
@@ -1140,7 +1125,6 @@ void printCalibrationSubmenu()
     disp.setCharAt(setPitchZeroPoint  ? 4 : 8, '<');
     lcdMenu.printMenu(disp);
   }
-#endif
   else if (calState == BACKLIGHT_CALIBRATION) {
     sprintf(scratchBuffer, "Brightness: %d", Brightness);
     lcdMenu.printMenu(scratchBuffer);

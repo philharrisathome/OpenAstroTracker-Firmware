@@ -4,9 +4,8 @@
 #if USE_GPS == 1
 #include "Sidereal.hpp"
 #endif
-#if USE_GYRO_LEVEL == 1
+
 #include "Gyro.hpp"
-#endif
 
 #if DISPLAY_TYPE > 0
 #if SUPPORT_GUIDED_STARTUP == 1
@@ -105,7 +104,6 @@ bool processStartupKeys() {
     }
     break;
 
-    #if USE_GYRO_LEVEL == 1
     case StartupSetRoll : {
       inStartup = false;
       LOGV1(DEBUG_INFO, F("STARTUP: Switching to CAL menu!"));
@@ -123,7 +121,6 @@ bool processStartupKeys() {
       startupState = StartupSetHATime;
     }
     break;
-    #endif
 
     case StartupSetHATime: {
       inStartup = false;

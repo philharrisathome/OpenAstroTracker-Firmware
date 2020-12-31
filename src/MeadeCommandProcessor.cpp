@@ -8,6 +8,9 @@
 #if USE_GPS == 1
 bool gpsAqcuisitionComplete(int & indicator); // defined in c72_menuHA_GPS.hpp
 #endif
+
+extern Gyro _gyro;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //
 // Serial support
@@ -868,13 +871,12 @@ String MeadeCommandProcessor::handleMeadeExtraCommands(String inCmd) {
     }
   }
   else if (inCmd[0] == 'L') { // Digital Level
-    #if USE_GYRO_LEVEL == 1
     if (inCmd[1] == 'G') { // get values
       if (inCmd[2] == 'R') { // get Calibration/Reference values
         return String (_mount->getPitchCalibrationAngle(),4) + "," + String (_mount->getRollCalibrationAngle(),4) +"#";
       }
       else if (inCmd[2] == 'C') { // Get current values
-        auto angles = Gyro::getCurrentAngles();
+        auto angles = _gyro.getCurrentAngles();
         return String (angles.pitchAngle,4) + "," + String (angles.rollAngle,4) +"#";
       }
     }
@@ -889,17 +891,16 @@ String MeadeCommandProcessor::handleMeadeExtraCommands(String inCmd) {
       }
     }
     else if (inCmd[1] == '1') { // Turn on Gyro
-      Gyro::startup();
+      _gyro.startup();
       return String("1#");
     }
     else if (inCmd[1] == '0') { // Turn off Gyro
-      Gyro::shutdown();
+      _gyro.shutdown();
       return String("1#");
     }
     else{
       return "Unknown Level command: X" + inCmd;
     }
-    #endif
     return String("0#");
   }
   else if ((inCmd[0]== 'F') && (inCmd[1]== 'R'))

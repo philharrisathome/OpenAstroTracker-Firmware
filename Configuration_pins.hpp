@@ -163,3 +163,12 @@
   #endif
 
 #endif
+
+#define LCD_BRIGHTNESS_PIN 10   // Brightness PWM control (#undef to disable)
+#define LCD_KEY_SENSE_PIN 0     // Analog input for shield keys (#undef to disable)
+#define LCD_PIN4 4              // LCD DB4 pin
+#define LCD_PIN5 5              // LCD DB5 pin
+#define LCD_PIN6 6              // LCD DB6 pin
+#define LCD_PIN7 7              // LCD DB7 pin
+#define LCD_PIN8 8              // LCD RS pin
+#define LCD_PIN9 9              // LCD ENABLE pin

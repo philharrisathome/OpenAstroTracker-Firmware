@@ -117,15 +117,11 @@ void printStatusSubmenu()
 
     case 4:
     {
-#if USE_GYRO_LEVEL == 1
-      int celsius = (int)round(Gyro::getCurrentTemperature());
-      int fahrenheit = (int)round(32.0 + 9.0 * Gyro::getCurrentTemperature() / 5.0);
+      int celsius = (int)round(_gyro.getCurrentTemperature());
+      int fahrenheit = (int)round(32.0 + 9.0 * _gyro.getCurrentTemperature() / 5.0);
 
       sprintf(scratchBuffer, "Temp: %d@C %d@F", celsius, fahrenheit);
       lcdMenu.printMenu(scratchBuffer);
-#else
-      infoIndex++;
-#endif
     }
     break;
 

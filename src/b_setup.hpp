@@ -10,14 +10,8 @@
 #include "Utility.hpp"
 #include "EPROMStore.hpp"
 
-LcdMenu lcdMenu(16, 2, MAXMENUITEMS);
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
-LcdButtons lcdButtons(LCD_KEY_SENSE_PIN, &lcdMenu);
-#endif
-
-#if DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008 || DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
-LcdButtons lcdButtons(&lcdMenu);
-#endif
+LcdMenu lcdMenu(MAXMENUITEMS);
+KeypadDevice& lcdButtons(lcdMenu.getKeypad());
 
 #if defined(__AVR_ATmega2560__)
 #if RA_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART

@@ -95,10 +95,8 @@ Mount::Mount(LcdMenu* lcdMenu) :
   _decLowerLimit = 0;
   _decUpperLimit = 0;
     
-  #if USE_GYRO_LEVEL == 1
   _pitchCalibrationAngle = 0;
   _rollCalibrationAngle = 0;
-  #endif
 }
 
 /////////////////////////////////
@@ -151,13 +149,11 @@ void Mount::readPersistentData()
   _longitude = EEPROMStore::getLongitude();
   LOGV2(DEBUG_INFO,F("Mount: EEPROM: Longitude is %s"), _longitude.ToString());
 
-#if USE_GYRO_LEVEL == 1
   _pitchCalibrationAngle = EEPROMStore::getPitchCalibrationAngle();
   LOGV2(DEBUG_INFO,F("Mount: EEPROM: Pitch Offset is %f"), _pitchCalibrationAngle);
 
   _rollCalibrationAngle = EEPROMStore::getRollCalibrationAngle();
   LOGV2(DEBUG_INFO,F("Mount: EEPROM: Roll Offset is %f"), _rollCalibrationAngle);
-#endif
 
   _raParkingPos = EEPROMStore::getRAParkingPos();
   _decParkingPos = EEPROMStore::getDECParkingPos();
@@ -439,7 +435,6 @@ void Mount::setSpeedCalibration(float val, bool saveToStorage) {
   }
 }
 
-#if USE_GYRO_LEVEL == 1
 /////////////////////////////////
 //
 // getPitchCalibrationAngle
@@ -483,7 +478,6 @@ void Mount::setRollCalibrationAngle(float angle)
   _rollCalibrationAngle = angle;
   EEPROMStore::storeRollCalibrationAngle(_rollCalibrationAngle);
 }
-#endif
 
 /////////////////////////////////
 //
