@@ -1,9 +1,14 @@
-#include "LcdMenu.hpp"
-#include "Mount.hpp"
+#include "../Configuration.hpp"
 #include "Utility.hpp"
 #include "EPROMStore.hpp"
-#include "inc/Config.hpp"
-#include "inc/Globals.hpp"
+#include "Mount.hpp"
+#include "Sidereal.hpp"
+
+#include <AccelStepper.h>
+#if (RA_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || (DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || \
+  (AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || (ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART)
+  #include <TMCStepper.h>   // If you get an error here, download the TMCstepper library from "Tools > Manage Libraries"
+#endif
 
 //mountstatus
 #define STATUS_PARKED              0B0000000000000000
@@ -97,6 +102,12 @@ Mount::Mount(LcdMenu* lcdMenu) :
     
   _pitchCalibrationAngle = 0;
   _rollCalibrationAngle = 0;
+
+  _localUtcOffset = 0;
+  _localStartDate.year = 2021;
+  _localStartDate.month = 1;
+  _localStartDate.day = 1;
+  _localStartTimeSetMillis = -1;
 }
 
 /////////////////////////////////
@@ -161,7 +172,7 @@ void Mount::readPersistentData()
 
   _decLowerLimit = EEPROMStore::getDECLowerLimit();
   _decUpperLimit = EEPROMStore::getDECUpperLimit();
-  LOGV3(DEBUG_INFO,F("Mount: EEPROM: DEC limits read as %l -> %l"), _decLowerLimit, _decUpperLimit );
+  LOGV3(DEBUG_INFO,F("Mount: EEPROM: DEC limits read as %l -> %l"), _decLowerLimit, _decUpperLimit);
 }
 
 /////////////////////////////////
@@ -273,7 +284,7 @@ void Mount::configureDECStepper(byte pin1, byte pin2, int maxSpeed, int maxAccel
   #if AZ_DRIVER_TYPE == DRIVER_TYPE_A4988_GENERIC || AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_STANDALONE || AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
     void Mount::configureAZStepper(byte pin1, byte pin2, int maxSpeed, int maxAcceleration)
     {
-      _stepperAZ = new AccelStepper(AccelStepper::DRIVER_MODE, pin1, pin2);
+      _stepperAZ = new AccelStepper(AccelStepper::DRIVER, pin1, pin2);
       _stepperAZ->setMaxSpeed(maxSpeed);
       _stepperAZ->setAcceleration(maxAcceleration);
       _maxAZSpeed = maxSpeed;
@@ -292,7 +303,7 @@ void Mount::configureDECStepper(byte pin1, byte pin2, int maxSpeed, int maxAccel
   #if ALT_DRIVER_TYPE == DRIVER_TYPE_A4988_GENERIC || ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_STANDALONE || ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
     void Mount::configureALTStepper(byte pin1, byte pin2, int maxSpeed, int maxAcceleration)
     {
-      _stepperALT = new AccelStepper(AccelStepper::DRIVER_MODE, pin1, pin2);
+      _stepperALT = new AccelStepper(AccelStepper::DRIVER, pin1, pin2);
       _stepperALT->setMaxSpeed(maxSpeed);
       _stepperALT->setAcceleration(maxAcceleration);
       _maxALTSpeed = maxSpeed;
@@ -359,7 +370,7 @@ void Mount::configureDECStepper(byte pin1, byte pin2, int maxSpeed, int maxAccel
 // configureAZdriver
 // TMC2209 UART only
 /////////////////////////////////
-#if AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
+#if (AZIMUTH_ALTITUDE_MOTORS == 1) && (AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART)
   void Mount::configureAZdriver(Stream *serial, float rsense, byte driveraddress, int rmscurrent, int stallvalue)
   {
     _driverAZ = new TMC2209Stepper(serial, rsense, driveraddress);
@@ -381,7 +392,7 @@ void Mount::configureDECStepper(byte pin1, byte pin2, int maxSpeed, int maxAccel
 // configureALTdriver
 // TMC2209 UART only
 /////////////////////////////////
-#if ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
+#if (AZIMUTH_ALTITUDE_MOTORS == 1) && (ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART)
   void Mount::configureALTdriver(Stream *serial, float rsense, byte driveraddress, int rmscurrent, int stallvalue)
   {
     _driverALT = new TMC2209Stepper(serial, rsense, driveraddress);
@@ -576,6 +587,18 @@ String Mount::getMountHardwareInfo()
     ret += "NO_GYRO,";
   #endif
 
+  #if DISPLAY_TYPE == DISPLAY_TYPE_NONE
+    ret += "NO_LCD,";
+  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD
+    ret += "LCD_KEYPAD,";
+  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23008
+    ret += "LCD_I2C_MCP23008,";
+  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_KEYPAD_I2C_MCP23017
+    ret += "LCD_I2C_MCP23017,";
+  #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
+    ret += "LCD_JOY_I2C_SSD1306,";
+  #endif
+
   return ret;
 }
 
@@ -673,6 +696,8 @@ void Mount::setLatitude(Latitude latitude) {
 void Mount::setLongitude(Longitude longitude) {
   _longitude = longitude;
   EEPROMStore::storeLongitude(_longitude);
+
+  autoCalcHa();
 }
 
 /////////////////////////////////
@@ -856,17 +881,45 @@ void Mount::startSlewingToTarget() {
 //
 /////////////////////////////////
 void Mount::stopGuiding() {
+  stopGuiding(true, true);
+}
 
-  _stepperDEC->stop();
-  while (_stepperDEC->isRunning()) {
-    _stepperDEC->run();
-    _stepperTRK->runSpeed();
+void Mount::stopGuiding(bool ra, bool dec)
+{
+  // Stop RA guide first, since it's just a speed change back to tracking speed
+  if (ra)
+  {
+    LOGV2(DEBUG_STEPPERS,F("STEP-stopGuiding(RA): TRK.setSpeed(%f)"), _trackingSpeed);
+    _stepperTRK->setSpeed(_trackingSpeed);
+    _mountStatus &= ~STATUS_GUIDE_PULSE_RA;
   }
 
-  // Return to tracking, update the speed. No need to update microstepping mode (same as guiding)
-  LOGV2(DEBUG_STEPPERS,F("STEP-stopGuiding: TRK.setSpeed(%f)"),_trackingSpeed);
-  _stepperTRK->setSpeed(_trackingSpeed);
-  _mountStatus &= ~STATUS_GUIDE_PULSE_MASK;
+  if (dec) 
+  {
+    LOGV1(DEBUG_STEPPERS,F("STEP-stopGuiding(DEC):"));
+
+    // Stop DEC guiding and wait for it to stop.
+    _stepperDEC->stop();
+  
+    while (_stepperDEC->isRunning()) 
+    {
+      _stepperDEC->run();
+      _stepperTRK->runSpeed();
+    }
+
+    // TODO: If microstepping for guiding is changed, re-enable this
+    // #if DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
+    //   _driverDEC->microsteps(DEC_SLEW_MICROSTEPPING == 1 ? 0 : DEC_SLEW_MICROSTEPPING);
+    // #endif
+
+    _mountStatus &= ~STATUS_GUIDE_PULSE_DEC;
+  }
+
+  //disable pulse state if no direction is active
+  if ((_mountStatus & STATUS_GUIDE_PULSE_DIR) == 0) 
+  {
+    _mountStatus &= ~STATUS_GUIDE_PULSE_MASK;
+  }
 }
 
 /////////////////////////////////
@@ -893,22 +946,24 @@ void Mount::guidePulse(byte direction, int duration) {
   switch (direction) {
     case NORTH:
     #if DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
-      // TODO: Fix broken microstep management to re-instate fine pointing
+      // TODO: Fix broken microstep management to re-instate fine pointing. Also fix code in stopGuiding()
       // _driverDEC->microsteps(DEC_GUIDE_MICROSTEPPING == 1 ? 0 : DEC_GUIDE_MICROSTEPPING);   // If 1 then disable microstepping
     #endif
     LOGV2(DEBUG_STEPPERS, F("STEP-guidePulse:  DEC.setSpeed(%f)"), DEC_PULSE_MULTIPLIER * decGuidingSpeed);
     _stepperDEC->setSpeed(DEC_PULSE_MULTIPLIER * decGuidingSpeed);
     _mountStatus |= STATUS_GUIDE_PULSE | STATUS_GUIDE_PULSE_DEC;
+    _guideDecEndTime = millis() + duration;
     break;
 
     case SOUTH:
     #if DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
-      // TODO: Fix broken microstep management to re-instate fine pointing
+      // TODO: Fix broken microstep management to re-instate fine pointing. Also fix code in stopGuiding()
       // _driverDEC->microsteps(DEC_GUIDE_MICROSTEPPING == 1 ? 0 : DEC_GUIDE_MICROSTEPPING);   // If 1 then disable microstepping
     #endif
     LOGV2(DEBUG_STEPPERS, F("STEP-guidePulse:  DEC.setSpeed(%f)"), -DEC_PULSE_MULTIPLIER * decGuidingSpeed);
     _stepperDEC->setSpeed(-DEC_PULSE_MULTIPLIER * decGuidingSpeed);
     _mountStatus |= STATUS_GUIDE_PULSE | STATUS_GUIDE_PULSE_DEC;
+    _guideDecEndTime = millis() + duration;
     break;
 
     case WEST:
@@ -916,6 +971,7 @@ void Mount::guidePulse(byte direction, int duration) {
     LOGV2(DEBUG_STEPPERS, F("STEP-guidePulse:  TRK.setSpeed(%f)"), (RA_PULSE_MULTIPLIER + 1) * raGuidingSpeed);
     _stepperTRK->setSpeed((RA_PULSE_MULTIPLIER + 1) * raGuidingSpeed);   // Faster than siderael
     _mountStatus |= STATUS_GUIDE_PULSE | STATUS_GUIDE_PULSE_RA;
+    _guideRaEndTime = millis() + duration;
     break;
 
     case EAST:
@@ -923,10 +979,10 @@ void Mount::guidePulse(byte direction, int duration) {
     LOGV2(DEBUG_STEPPERS, F("STEP-guidePulse:  TRK.setSpeed(%f)"), (RA_PULSE_MULTIPLIER - 1) * raGuidingSpeed);
     _stepperTRK->setSpeed((RA_PULSE_MULTIPLIER - 1) * raGuidingSpeed);   // Slower than siderael
     _mountStatus |= STATUS_GUIDE_PULSE | STATUS_GUIDE_PULSE_RA;
+    _guideRaEndTime = millis() + duration;
     break;
   }
-
-  _guideEndTime = millis() + duration;
+  
   LOGV1(DEBUG_STEPPERS, F("STEP-guidePulse: < Guide Pulse"));
 }
 
@@ -1565,7 +1621,7 @@ void Mount::waitUntilStopped(byte direction) {
   while (((direction & (EAST | WEST)) && _stepperRA->isRunning())
          || ((direction & (NORTH | SOUTH)) && _stepperDEC->isRunning())
          || ((direction & TRACKING) && (((_mountStatus & STATUS_TRACKING) == 0) && _stepperTRK->isRunning()))
-         ) {
+        ) {
     loop();
     yield();
   }
@@ -1619,7 +1675,7 @@ void Mount::interruptLoop()
     return;
   }
 
-  if (_mountStatus & STATUS_TRACKING ) {
+  if (_mountStatus & STATUS_TRACKING) {
     //if ~(_mountStatus & STATUS_SLEWING) {
       _stepperTRK->runSpeed();
     //}
@@ -1659,7 +1715,7 @@ void Mount::loop() {
   interruptLoop();
   #endif
 
-  #if DEBUG_LEVEL & (DEBUG_MOUNT && DEBUG_VERBOSE)
+  #if (DEBUG_LEVEL & DEBUG_MOUNT) && (DEBUG_LEVEL & DEBUG_VERBOSE)
   unsigned long now = millis();
   if (now - _lastMountPrint > 2000) {
     LOGV2(DEBUG_MOUNT, "%s",getStatusString().c_str());
@@ -1674,7 +1730,7 @@ void Mount::loop() {
     disableAzAltMotors();
     _azAltWasRunning = false;
   }
-  if (_stepperALT->isRunning() || _stepperAZ->isRunning() )
+  if (_stepperALT->isRunning() || _stepperAZ->isRunning())
   {
      _azAltWasRunning = true;
   }
@@ -1695,13 +1751,16 @@ void Mount::loop() {
   #endif
   
   if (isGuiding()) {
-    if (millis() > _guideEndTime) {
-      stopGuiding();
-    #if DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
-      // TODO: Fix broken microstep management to re-instate fine pointing
-      // LOGV2(DEBUG_STEPPERS, F("STEP-loop: DEC driver setMicrosteps(%d)"), DEC_SLEW_MICROSTEPPING == 1 ? 0 : DEC_SLEW_MICROSTEPPING);
-      // _driverDEC->microsteps(DEC_SLEW_MICROSTEPPING == 1 ? 0 : DEC_SLEW_MICROSTEPPING);   // If 1 then disable microstepping
-    #endif					
+    unsigned long now = millis();
+    bool stopRaGuiding = now > _guideRaEndTime;
+    bool stopDecGuiding = now > _guideDecEndTime;
+    if (stopRaGuiding || stopDecGuiding) {
+      stopGuiding(stopRaGuiding,stopDecGuiding);
+      #if DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
+        // TODO: Fix broken microstep management to re-instate fine pointing
+        // LOGV2(DEBUG_STEPPERS, F("STEP-loop: DEC driver setMicrosteps(%d)"), DEC_SLEW_MICROSTEPPING == 1 ? 0 : DEC_SLEW_MICROSTEPPING);
+        // _driverDEC->microsteps(DEC_SLEW_MICROSTEPPING == 1 ? 0 : DEC_SLEW_MICROSTEPPING);   // If 1 then disable microstepping
+      #endif					
     }
     return;
   }
@@ -2291,3 +2350,147 @@ void Mount::finishFindingHomeRA()
 
 }
 #endif
+
+/////////////////////////////////
+//
+// 
+//
+/////////////////////////////////
+DayTime Mount::getUtcTime() {
+  DayTime timeUTC = getLocalTime();
+  timeUTC.addHours(_localUtcOffset);
+  return timeUTC;
+}
+
+/////////////////////////////////
+//
+// localTime
+//
+/////////////////////////////////
+DayTime Mount::getLocalTime() {
+  DayTime timeUTC = _localStartTime;
+  timeUTC.addSeconds((millis() - _localStartTimeSetMillis) / 1000);
+  return timeUTC;
+}
+
+/////////////////////////////////
+//
+// localDate
+//
+/////////////////////////////////
+LocalDate Mount::getLocalDate() {
+  LocalDate localDate = _localStartDate;
+  long secondsSinceSetDayEnd = ((millis() - _localStartTimeSetMillis) / 1000) - (86400 - _localStartTime.getTotalSeconds());
+  
+  while(secondsSinceSetDayEnd >= 0) {
+    localDate.day++;
+    secondsSinceSetDayEnd -= 86400;
+
+    int maxDays = 31;
+    switch(localDate.month) {
+      case 2:
+        if (((localDate.year % 4 == 0) && (localDate.year % 100 != 0)) || (localDate.year % 400 == 0)) {
+          maxDays = 29;
+        }
+        else {
+          maxDays = 28;
+        }
+      break;
+
+      case 4:
+      case 6:
+      case 9:
+      case 11:
+        maxDays = 30;
+      break;
+    }
+
+    //calculate day overflow
+    if (localDate.day > maxDays) {
+      localDate.day = 1;
+      localDate.month++;
+    }
+    //calculate year overflow
+    if (localDate.month > 12) {
+      localDate.month = 1;
+      localDate.year++;
+    }
+  }
+
+  return localDate;
+}
+
+/////////////////////////////////
+//
+// localUtcOffset
+//
+/////////////////////////////////
+const int Mount::getLocalUtcOffset() const {
+  return _localUtcOffset;
+}
+
+/////////////////////////////////
+//
+// setLocalStartDate
+//
+/////////////////////////////////
+void Mount::setLocalStartDate(int year, int month, int day) {
+  _localStartDate.year = year;
+  _localStartDate.month = month;
+  _localStartDate.day = day;
+
+  autoCalcHa();
+}
+
+/////////////////////////////////
+//
+// setLocalStartTime
+//
+/////////////////////////////////
+void Mount::setLocalStartTime(DayTime localTime) {
+  _localStartTime = localTime;
+  _localStartTimeSetMillis = millis();
+
+  autoCalcHa();
+}
+
+/////////////////////////////////
+//
+// setLocalUtcOffset
+//
+/////////////////////////////////
+void Mount::setLocalUtcOffset(int offset) {
+  _localUtcOffset = offset;
+  autoCalcHa();
+}
+
+/////////////////////////////////
+//
+// autoCalcHa
+//
+/////////////////////////////////
+void Mount::autoCalcHa() {
+  setHA(calculateHa());
+}
+
+/////////////////////////////////
+//
+// calculateLst
+//
+/////////////////////////////////
+DayTime Mount::calculateLst() {
+  DayTime timeUTC = getUtcTime();
+  LocalDate localDate = getLocalDate();
+  DayTime lst = Sidereal::calculateByDateAndTime(longitude().getTotalHours(), localDate.year, localDate.month, localDate.day, &timeUTC);
+  return lst;
+}
+
+/////////////////////////////////
+//
+// calculateHa
+//
+/////////////////////////////////
+DayTime Mount::calculateHa() {
+  DayTime lst = calculateLst();
+  return Sidereal::calculateHa(lst.getTotalHours());
+}

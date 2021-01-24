@@ -1,8 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
-#include "../Configuration_adv.hpp"
-
 #include <LiquidCrystal.h>  // https://github.com/arduino-libraries/LiquidCrystal
 #include <LiquidTWI2.h>     // https://github.com/lincomatic/LiquidTWI2
 #include <U8x8lib.h>        // https://github.com/olikraus/u8g2
@@ -219,4 +216,6 @@ private:
   typedef MCP23017DisplayDevice DisplayDevice;
 #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
   typedef SSD1306DisplayDevice DisplayDevice;
+#else
+  #error DISPLAY_TYPE must be defined
 #endif

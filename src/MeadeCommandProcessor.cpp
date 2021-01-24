@@ -1,7 +1,9 @@
-#include "MeadeCommandProcessor.hpp"
-#include "inc/Config.hpp"
 #include "inc/Globals.hpp"
+#include "../Configuration.hpp"
 #include "Utility.hpp"
+#include "LcdMenu.hpp"
+#include "Mount.hpp"
+#include "MeadeCommandProcessor.hpp"
 #include "WifiControl.hpp"
 #include "Gyro.hpp"
 
@@ -105,7 +107,50 @@ extern Gyro _gyro;
 //      Get Site Longitude
 //      Returns: DDD*MM#
 //               Where DDD is the longitude in degrees and MM the minutes. Negative (W) longitudes have had 360 added to them.
-//       
+
+// :Gc#
+//      Get current Clock format 
+//      Returns: 24#
+//
+// :GG# 
+//      Get UTC offset time
+//      Returns: sHH#
+//               Where s is the sign and HH are the number of hours that need to be added to local time to convert to UTC time
+//
+// :Ga#
+//      Get local time in 12h format
+//      Returns: HH:MM:SS#
+//               Where HH are hours (modulo 12), MM are minutes and SS are seconds of the local time.
+//
+// :GL#
+//      Get local time in 24h format
+//      Returns: HH:MM:SS#
+//               Where HH are hours, MM are minutes and SS are seconds of the local time.
+//
+// :GC#
+//      Get current date
+//      Returns: MM/DD/YY
+//               Where MM is the month (1-12), day is the day (1-31) and year is the lower two digits of the year
+//
+// :GM#
+//      Get Site Name 1
+//      Returns: OAT1# 
+//
+// :GN#
+//      Get Site Name 2
+//      Returns: OAT2# 
+//
+// :GO#
+//      Get Site Name 3
+//      Returns: OAT2# 
+//
+// :GP#
+//      Get Site Name 4
+//      Returns: OAT4# 
+//
+// :GT#
+//      Get tracking rate
+//      Returns: 60.0#
 //
 // -- GET Extensions --
 // :GIS#
@@ -173,22 +218,19 @@ extern Gyro _gyro;
 //      Set Site UTC Offset
 //      This sets the offset of the timezone in which the mount is in hours from UTC.
 //      Where s is the sign and HH is the number of hours.
-//      CURRENTLY IGNORED.
 //      Returns: 1 
 //
 // :SLHH:MM:SS#
 //      Set Site Local Time
 //      This sets the local time of the timezone in which the mount is located.
 //      Where HH is hours, MM is minutes and SS is seconds.
-//      CURRENTLY IGNORED.
 //      Returns: 1 
 //
 // :SCMM/DD/YY#
 //      Set Site Date
 //      This sets the date
-//      Where HHMM is the month, DD is teh day and YY is the year since 2000.
-//      CURRENTLY IGNORED.
-//      Returns: 1Updating Planetary Data# 
+//      Where HHMM is the month, DD is the day and YY is the year since 2000.
+//      Returns: 1Updating Planetary Data#                              # 
 //
 // -- SET Extensions --
 // :SHHH:MM#
@@ -486,6 +528,7 @@ String MeadeCommandProcessor::handleMeadeInit(String inCmd) {
 String MeadeCommandProcessor::handleMeadeGetInfo(String inCmd) {
   char cmdOne = inCmd[0];
   char cmdTwo = (inCmd.length() > 1) ? inCmd[1] : '\0';
+  char achBuffer[20];
 
   switch (cmdOne) {
     case 'V':
@@ -522,14 +565,53 @@ String MeadeCommandProcessor::handleMeadeGetInfo(String inCmd) {
       return retVal + "#";
     }
     case 't': {
-      char achBuffer[20];
       _mount->latitude().formatString(achBuffer,"{d}*{m}#");
       return String(achBuffer);
     }
     case 'g': {
-      char achBuffer[20];
       _mount->longitude().formatString(achBuffer,"{d}*{m}#");
       return String(achBuffer);
+    }
+    case 'c': {
+      return "24#";
+    }
+    case 'G': { 
+      int offset = _mount->getLocalUtcOffset();
+      sprintf(achBuffer, "%+03d#", offset);
+      return String(achBuffer);
+    }
+    case 'a': {
+      DayTime time = _mount->getLocalTime();
+      if (time.getHours() > 12) {
+        time.addHours(-12);
+      }
+      time.formatString(achBuffer, "{d}:{m}:{s}");
+      return String(achBuffer);
+    }
+    case 'L': {
+      DayTime time = _mount->getLocalTime();
+      time.formatString( achBuffer, "{d}:{m}:{s}" );
+      return String(achBuffer);
+    }
+    case 'C': {
+      LocalDate date = _mount->getLocalDate();
+      sprintf(achBuffer, "%02d/%02d/%02d#", date.month, date.day, date.year % 100);
+      return String(achBuffer);
+    }
+    case 'M': {
+      return "OAT1#";
+    }
+    case 'N': {
+      return "OAT2#";
+    }
+    case 'O': {
+      return "OAT3#";
+    }
+    case 'P': {
+      return "OAT4#";
+    }
+    case 'T': {
+      return "60.0#"; //default MEADE Tracking Frequency
     }
   }
 
@@ -666,14 +748,27 @@ String MeadeCommandProcessor::handleMeadeSetInfo(String inCmd) {
   }
   else if (inCmd[0] == 'G') // utc offset :SG+05#
   {
+    int offset = inCmd.substring(1, 4).toInt();
+    _mount->setLocalUtcOffset( offset );
     return "1";
   }
   else if (inCmd[0] == 'L') // Local time :SL19:33:03#
   {
+    _mount->setLocalStartTime( DayTime::ParseFromMeade( inCmd.substring( 1 ) ) );
     return "1";
   }
   else if (inCmd[0] == 'C') { // Set Date (MM/DD/YY) :SC04/30/20#
-    return "1Updating Planetary Data#"; // 
+    int month = inCmd.substring( 1, 3 ).toInt();
+    int day = inCmd.substring( 4, 6 ).toInt();
+    int year = 2000 + inCmd.substring( 7, 9 ).toInt();
+    _mount->setLocalStartDate( year, month,day );
+
+    /*
+    From https://www.astro.louisville.edu/software/xmtel/archive/xmtel-indi-6.0/xmtel-6.0l/support/lx200/CommandSet.html :
+    SC: Calendar: If the date is valid 2 <string>s are returned, each string is 31 bytes long. 
+    The first is: "Updating planetary data#" followed by a second string of 30 spaces terminated by '#'
+    */
+    return "1Updating Planetary Data#                              #"; // 
   }
   else {
     return "0";
@@ -703,16 +798,18 @@ String MeadeCommandProcessor::handleMeadeMovement(String inCmd) {
       return "0";
     }
   }
-  else if (inCmd[0] == 'G') {
+  else if ((inCmd[0] == 'G') || (inCmd[0] == 'g')) { 
+    // The spec calls for lowercase, but ASCOM Drivers prior to 0.3.1.0 sends uppercase, so we allow both for now.
     // Guide pulse
     //   012345678901
     // :MGd0403
     if (inCmd.length() == 6) {
       byte direction = EAST;
-      if (inCmd[1] == 'N') direction = NORTH;
-      else if (inCmd[1] == 'S') direction = SOUTH;
-      else if (inCmd[1] == 'E') direction = EAST;
-      else if (inCmd[1] == 'W') direction = WEST;
+      inCmd.toLowerCase();
+      if (inCmd[1] == 'n') direction = NORTH;
+      else if (inCmd[1] == 's') direction = SOUTH;
+      else if (inCmd[1] == 'e') direction = EAST;
+      else if (inCmd[1] == 'w') direction = WEST;
       int duration = (inCmd[2] - '0') * 1000 + (inCmd[3] - '0') * 100 + (inCmd[4] - '0') * 10 + (inCmd[5] - '0');
       _mount->guidePulse(direction, duration);
       return "1";
@@ -840,7 +937,7 @@ String MeadeCommandProcessor::handleMeadeExtraCommands(String inCmd) {
       return String(scratchBuffer);
     }
     else if (inCmd[1] == 'N') {
-#ifdef WIFI_ENABLED
+#if (WIFI_ENABLED == 1)
       return wifiControl.getStatus() + "#";
 #endif
 

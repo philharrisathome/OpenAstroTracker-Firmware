@@ -1,8 +1,11 @@
 #ifndef UTILITY_HPP_
 #define UTILITY_HPP_
 
-#include <Arduino.h>
-#include "../Configuration_adv.hpp"
+#include "inc/Globals.hpp"
+
+#ifndef DEBUG_LEVEL
+  #error Configuration.hpp must be included before Utility.hpp for correct debug configuration
+#endif
 
 String getLogBuffer();
 int freeMemory();
@@ -128,7 +131,6 @@ void logv(int levelFlags, String input, ...);
 
 #endif // DEBUG_LEVEL>0
 
-
 // Adjust the given number by the given adjustment, wrap around the limits.
 // Limits are inclusive, so they represent the lowest and highest valid number.
 int adjustWrap(int current, int adjustBy, int minVal, int maxVal);
@@ -154,8 +156,5 @@ int sign(long num);
 
 // Return -1 if the given number is less than zero, 1 if not.
 int fsign(float num);
-
-// Read the LCD Shield's key state and return the button being pressed (btnUP, etc.).
-//int read_LCD_buttons();
 
 #endif

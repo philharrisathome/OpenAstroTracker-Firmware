@@ -1,8 +1,10 @@
+#include "inc/Globals.hpp"
+#include "../Configuration.hpp"
 #include "Utility.hpp"
 #include "EPROMStore.hpp"
 #include "LcdMenu.hpp"
-#include "inc/Config.hpp"
 
+#if DISPLAY_TYPE != DISPLAY_TYPE_NONE
 
 // Class that drives the LCD screen with a menu
 // You add a string and an id item and this class handles the display and navigation
@@ -213,4 +215,6 @@ void FullLcdMenu::printMenu(String line)
   }
 }
 
+
+#endif
 

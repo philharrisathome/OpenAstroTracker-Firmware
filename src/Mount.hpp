@@ -1,17 +1,14 @@
 #ifndef _MOUNT_HPP_
 #define _MOUNT_HPP_
 
-#include <AccelStepper.h>
-#include "inc/Config.hpp"
+#include "Declination.hpp"
 #include "Latitude.hpp"
 #include "Longitude.hpp"
-#include "Declination.hpp"
 #include "LcdMenu.hpp"
 
-#if (RA_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || (DEC_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || (AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART) || (ALT_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART)
- #include <TMCStepper.h>
- // If you get an error here, download the TMCstepper library from "Tools > Manage Libraries"
-#endif
+// Forward declarations
+class AccelStepper;
+class TMC2209Stepper;
 
 #define NORTH                      B00000001
 #define EAST                       B00000010
@@ -34,6 +31,12 @@
 #define DEC_STEPS 2
 #define AZIMUTH_STEPS 5
 #define ALTITUDE_STEPS 6
+
+struct LocalDate {
+  int year;
+  int month;
+  int day;
+};
 
 //////////////////////////////////////////////////////////////////
 //
@@ -230,6 +233,9 @@ public:
   // Stops any guide operation in progress.
   void stopGuiding();
 
+  // Stops given guide operations in progress.
+  void stopGuiding(bool ra, bool dec);
+
   // Return a string of DEC in the given format. For LCDSTRING, active determines where the cursor is
   String DECString(byte type, byte active = 0);
 
@@ -281,6 +287,19 @@ public:
 
   // Let the mount know that the system has finished booting
   void bootComplete();
+
+  DayTime getUtcTime();
+  DayTime getLocalTime();
+  LocalDate getLocalDate();
+
+  const int getLocalUtcOffset() const;
+
+  void setLocalStartDate( int year, int month, int day );
+  void setLocalStartTime( DayTime localTime );
+  void setLocalUtcOffset( int offset );
+
+  DayTime calculateLst();
+  DayTime calculateHa();
 private:
 
   // Reads values from EEPROM that configure the mount (if previously stored)
@@ -304,6 +323,7 @@ private:
     String mountStatusString();
   #endif
 
+  void autoCalcHa();
 
 private:
   LcdMenu* _lcdMenu;
@@ -356,8 +376,8 @@ private:
   #if AZIMUTH_ALTITUDE_MOTORS == 1
     AccelStepper* _stepperAZ;
     AccelStepper* _stepperALT;
-    const int _stepsPerAZDegree;    // u-steps/degree (from CTOR)
-    const int _stepsPerALTDegree;   // u-steps/degree (from CTOR)
+    const long _stepsPerAZDegree;    // u-steps/degree (from CTOR)
+    const long _stepsPerALTDegree;   // u-steps/degree (from CTOR)
     bool _azAltWasRunning;
     #if AZ_DRIVER_TYPE == DRIVER_TYPE_TMC2209_UART
       TMC2209Stepper* _driverAZ;
@@ -367,7 +387,8 @@ private:
     #endif 
   #endif
 
-  unsigned long _guideEndTime;
+  unsigned long _guideRaEndTime;
+  unsigned long _guideDecEndTime;
   unsigned long _lastMountPrint = 0;
   unsigned long _lastTrackingPrint = 0;
   float _trackingSpeed;                 // RA u-steps/sec when in tracking mode
@@ -382,6 +403,12 @@ private:
   bool _slewingToHome;
   bool _slewingToPark;
   bool _bootComplete;
+
+  int _localUtcOffset;
+  LocalDate _localStartDate;
+  DayTime _localStartTime;
+  long _localStartTimeSetMillis;
+
 };
 
 #endif

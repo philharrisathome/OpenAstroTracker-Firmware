@@ -1,13 +1,10 @@
 #pragma once
-#include "../Configuration_adv.hpp"
-
-#if USE_GPS == 1
+#include "../Configuration.hpp"
 #include "Sidereal.hpp"
-#endif
-
 #include "Gyro.hpp"
 
-#if DISPLAY_TYPE > 0
+#if DISPLAY_TYPE != DISPLAY_TYPE_NONE
+
 #if SUPPORT_GUIDED_STARTUP == 1
 
 //////////////////////////////////////////////////////////////

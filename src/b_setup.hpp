@@ -4,11 +4,10 @@
 
 #include "InterruptCallback.hpp"
 
-#include "inc/Config.hpp"
-#include "a_inits.hpp"
-#include "LcdMenu.hpp"
 #include "Utility.hpp"
 #include "EPROMStore.hpp"
+#include "a_inits.hpp"
+#include "LcdMenu.hpp"
 
 LcdMenu lcdMenu(MAXMENUITEMS);
 KeypadDevice& lcdButtons(lcdMenu.getKeypad());
@@ -38,7 +37,7 @@ Mount mount(&lcdMenu);
 
 #include "g_bluetooth.hpp"
 
-#ifdef WIFI_ENABLED
+#if (WIFI_ENABLED == 1)
 #include "WifiControl.hpp"
 WifiControl wifiControl(&mount, &lcdMenu);
 #endif
@@ -187,8 +186,8 @@ void setup() {
 
   Serial.begin(SERIAL_BAUDRATE);
 
-  #ifdef BLUETOOTH_ENABLED 
-  BLUETOOTH_SERIAL.begin("OpenAstroTracker");
+  #if (BLUETOOTH_ENABLED == 1)
+  BLUETOOTH_SERIAL.begin(BLUETOOTH_DEVICE_NAME);
   #endif
 
   LOGV1(DEBUG_ANY, F("."));
@@ -197,7 +196,7 @@ void setup() {
   EEPROMStore::initialize();
 
   // Calling the LCD startup here, I2C can't be found if called earlier
-  #if DISPLAY_TYPE > 0
+  #if DISPLAY_TYPE != DISPLAY_TYPE_NONE
     lcdMenu.startup();
 
     LOGV1(DEBUG_ANY, F("Finishing boot..."));
@@ -252,7 +251,7 @@ void setup() {
   LOGV1(DEBUG_ANY, F("Initialize LX200 handler..."));
   MeadeCommandProcessor::createProcessor(&mount, &lcdMenu);
 
-  #ifdef WIFI_ENABLED
+  #if (WIFI_ENABLED == 1)
     LOGV1(DEBUG_ANY, F("Setup Wifi..."));
     wifiControl.setup();
   #endif

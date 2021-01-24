@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
 #include "b_setup.hpp"
 #include "c65_startup.hpp"
 #include "c70_menuRA.hpp"
@@ -219,17 +218,17 @@
     }
 
 
-    #ifdef BLUETOOTH_ENABLED
+    #if (BLUETOOTH_ENABLED == 1)
     BTin();
     #endif
   }
 
-  #else
+#else // DISPLAY not NONE
 
   void loop() {
-    #ifndef ESP32
+    #ifdef ESP32
       serialLoop();
-    #ifdef BLUETOOTH_ENABLED
+    #if (BLUETOOTH_ENABLED == 1)
       BTin();
     #endif
     #endif

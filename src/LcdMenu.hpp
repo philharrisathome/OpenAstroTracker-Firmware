@@ -1,7 +1,6 @@
 #ifndef _LCDMENU_HPP_
 #define _LCDMENU_HPP_
-#include <Arduino.h>
-#include "../Configuration_adv.hpp"
+
 #include "DisplayDevice.hpp"
 #include "KeypadDevice.hpp"
 

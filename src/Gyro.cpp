@@ -1,8 +1,8 @@
-#include "../Configuration_adv.hpp"
+#include <Wire.h> // I2C communication library
+
+#include "../Configuration.hpp"
 #include "Utility.hpp"
 #include "Gyro.hpp"
-
-#include <Wire.h> // I2C communication library
 
 /**
  * @brief Start the gyro device.

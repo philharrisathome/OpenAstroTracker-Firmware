@@ -1,3 +1,5 @@
+#include "inc/Globals.hpp"
+#include "../Configuration.hpp"
 #include "Utility.hpp"
 #include "DisplayDevice.hpp"
 #include "KeypadDevice.hpp"

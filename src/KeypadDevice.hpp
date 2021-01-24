@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
-#include "../Configuration_adv.hpp"
 #include "DisplayDevice.hpp"
 
 // TODO: Replace with enum inside KeypadDevice namespace
@@ -111,6 +109,8 @@ protected:
   typedef MCP23008_MCP23017KeypadDevice _KeypadDevice;
 #elif DISPLAY_TYPE == DISPLAY_TYPE_LCD_JOY_I2C_SSD1306
   typedef MiniJoystickKeypadDevice _KeypadDevice;
+#else
+  #error DISPLAY_TYPE must be defined
 #endif
 
 /**
